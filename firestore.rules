@@ -1,0 +1,64 @@
+rules_version = '2';
+
+// Gammon Ledger — Firestore security rules.
+// Paste these into Firebase console → Firestore Database → Rules → Publish.
+//
+// What they enforce:
+//  - Only signed-in (anonymous) users can read or write anything.
+//  - A match can only be created by its host, with the guest seat empty.
+//  - The empty guest seat can be taken once, by the person taking it.
+//  - After that, only the two seated players can change the match, and
+//    neither can change who is sitting where.
+//  - Chat is readable and writable only by the two seated players, each
+//    message is sent as yourself, and messages can't be edited or deleted.
+// The dice themselves are protected in the page by the hash-chain check,
+// which these rules don't need to understand.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    match /matches/{code} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && code.size() == 6
+        && request.resource.data.code == code
+        && request.resource.data.host.uid == request.auth.uid
+        && request.resource.data.guest == null
+        && request.resource.data.players == [request.auth.uid];
+
+      allow update: if signedIn()
+        && request.resource.data.host == resource.data.host
+        && request.resource.data.code == resource.data.code
+        && (
+          // a seated player updating the game; seats stay as they are
+          (request.auth.uid in resource.data.players
+            && request.resource.data.guest == resource.data.guest
+            && request.resource.data.players == resource.data.players)
+          ||
+          // someone taking the empty guest seat for themselves
+          (resource.data.guest == null
+            && request.resource.data.guest.uid == request.auth.uid
+            && request.resource.data.players == [resource.data.host.uid, request.auth.uid])
+        );
+
+      allow delete: if false;
+
+      match /chat/{msg} {
+        function seated() {
+          return request.auth.uid in get(/databases/$(database)/documents/matches/$(code)).data.players;
+        }
+        allow read: if signedIn() && seated();
+        allow create: if signedIn() && seated()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500
+          && request.resource.data.ts is number;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
