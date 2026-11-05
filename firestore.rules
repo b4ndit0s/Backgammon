@@ -9,8 +9,10 @@ rules_version = '2';
 //  - The empty guest seat can be taken once, by the person taking it.
 //  - After that, only the two seated players can change the match, and
 //    neither can change who is sitting where.
-//  - Chat is readable and writable only by the two seated players, each
-//    message is sent as yourself, and messages can't be edited or deleted.
+//  - Chat is readable and writable only by the two seated players, and each
+//    message is sent as yourself. A message is either text (up to 500
+//    characters) or one photo (stored inline, under ~880 KB). Messages can't
+//    be edited; only "vanish" messages can be deleted, by either player.
 // The dice themselves are protected in the page by the hash-chain check,
 // which these rules don't need to understand.
 
@@ -51,13 +53,23 @@ service cloud.firestore {
           return request.auth.uid in get(/databases/$(database)/documents/matches/$(code)).data.players;
         }
         allow read: if signedIn() && seated();
+        function textOK() {
+          return request.resource.data.get('text', null) is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() <= 500;
+        }
+        function photoOK() {
+          return request.resource.data.get('img', null) is string
+            && request.resource.data.img.size() <= 900000;
+        }
         allow create: if signedIn() && seated()
           && request.resource.data.uid == request.auth.uid
-          && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 500
-          && request.resource.data.ts is number;
-        allow update, delete: if false;
+          && request.resource.data.ts is number
+          && request.resource.data.get('vanish', false) is bool
+          && (textOK() || photoOK());
+        allow delete: if signedIn() && seated()
+          && resource.data.get('vanish', false) == true;
+        allow update: if false;
       }
     }
   }

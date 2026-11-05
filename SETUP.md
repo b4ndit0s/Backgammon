@@ -59,12 +59,21 @@ old one). Reload the site; the **Online** tab now lets you create and join games
 
 ## Playing
 
-- **Online → your name → pick a match length → Create game.** Send the link
-  (or the six-character code). The game starts the moment your friend opens it.
+- **Online → your name → pick a match length → Create game.** Your friend can
+  join from **Open games** on their Online tab with one tap, or from the link or
+  six-character code. The game starts the moment they join.
+- Untick **Show in Open games** when you create a game if you don't want anyone
+  else who visits the site to see it; then only the link or code gets them in.
 - Either of you can close the page. The game waits under **Online → Your games**
   and picks up exactly where it was — live if you're both on, or a move at a time.
 - A green dot next to your friend's name means they have the game open now.
-- **Chat** sits under the board. Only the two players can see it.
+- **Chat** sits under the board. Only the two players can see it. Tap the
+  smiley for emoji, the picture button to send a photo (it's shrunk to a few
+  hundred KB first), or a photo of the board if you want to argue about a move.
+- **Vanish** (top of the chat) makes the messages and photos you send disappear
+  10 seconds after your opponent has them on screen — from both screens and
+  from the database. If they're not looking, it waits until they are. It can't
+  stop a screenshot.
 - Anyone else with the link can **watch**, but can't move or read the chat.
 
 ## Things to know
@@ -84,6 +93,13 @@ old one). Reload the site; the **Online** tab now lets you create and join games
   you get a warning, though it's still shown as played.
 - **Your ledger and reviews** record online games alongside computer games,
   in each player's own browser.
+
+## Updating to a new version
+1. **Publish the new rules first.** If an update includes `firestore.rules`,
+   copy its contents into Firestore → Rules → Publish before anything else.
+2. Upload the new files to GitHub, replacing the old ones. **Don't replace your
+   edited `firebase-config.js`.**
+3. Reload the site. If you still see the old version, close the tab and reopen it.
 
 ## Updating later
 Replace the files on GitHub with the new ones — but **keep your edited

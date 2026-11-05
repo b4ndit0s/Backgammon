@@ -7,8 +7,10 @@
      watch(code, cb)    -> unsubscribe           live match document
      mine(uid)          -> Promise<[match]>      matches this player sits in
      touch(code, patch) -> Promise               small field update (presence)
+     openGames()        -> Promise<[match]>      matches waiting for a second player
      chatSend(code, m)  -> Promise
-     chatWatch(code,cb) -> unsubscribe           last 100 messages, oldest first */
+     chatDelete(code,id)-> Promise               removes a vanishing message
+     chatWatch(code,cb) -> unsubscribe           last 60 messages, oldest first, each with its id */
 (function () {
   "use strict";
   // Firestore rejects `undefined`; a JSON round trip drops it.
@@ -68,6 +70,12 @@
           .then(function (q) { return q.docs.map(function (d) { return d.data(); }); });
       },
 
+      openGames: function () {
+        // One equality filter needs no composite index; the page filters and sorts.
+        return matches.where("phase", "==", "waiting").limit(40).get()
+          .then(function (q) { return q.docs.map(function (d) { return d.data(); }); });
+      },
+
       touch: function (code, patch) {
         return matches.doc(code).update(clean(patch));
       },
@@ -76,9 +84,16 @@
         return matches.doc(code).collection("chat").add(clean(msg));
       },
 
+      chatDelete: function (code, id) {
+        return matches.doc(code).collection("chat").doc(id).delete();
+      },
+
       chatWatch: function (code, cb) {
-        return matches.doc(code).collection("chat").orderBy("ts").limitToLast(100)
-          .onSnapshot(function (q) { cb(q.docs.map(function (d) { return d.data(); })); }, function () {});
+        // 60 rather than 100: photos make messages larger.
+        return matches.doc(code).collection("chat").orderBy("ts").limitToLast(60)
+          .onSnapshot(function (q) {
+            cb(q.docs.map(function (d) { var m = d.data(); m.id = d.id; return m; }));
+          }, function () {});
       }
     };
   };

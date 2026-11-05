@@ -153,6 +153,34 @@ input.txt:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 .chip{font:inherit;font-size:12.5px;padding:4px 10px;border-radius:99px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink-2);cursor:pointer}
 .chatin{display:flex;gap:6px;border-top:1px solid var(--line);padding:8px}
 .chatin .btn{flex:none}
+.chat .hd{gap:8px}
+.vanbtn{font:inherit;font-size:12px;font-weight:600;padding:3px 10px;border-radius:99px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.vanbtn[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.chat.vanish .chatin{background:var(--sunken)}
+.chat.vanish #chatText{border-style:dashed}
+.iconbtn{flex:none;width:40px;height:40px;padding:0;border-radius:8px;border:1px solid var(--line-2);background:var(--surface);color:var(--ink-2);font-size:19px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.iconbtn[aria-expanded="true"]{background:var(--surface-2);border-color:var(--ink-3)}
+.iconbtn svg{width:20px;height:20px}
+.emojis{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:2px;padding:6px 8px 8px;border-top:1px solid var(--line)}
+.emojis button{font-size:22px;line-height:1;padding:6px 0;border:0;background:none;border-radius:6px;cursor:pointer}
+.emojis button:hover,.emojis button:focus-visible{background:var(--surface-2)}
+.msg.pic{padding:4px;max-width:70%}
+.msg.pic img{display:block;max-width:100%;max-height:260px;border-radius:9px;cursor:zoom-in}
+.msg.pic small{padding:2px 6px 1px}
+.msg.big{font-size:30px;line-height:1.15;background:none!important;padding:2px 4px}
+.msg.van{border:1.5px dashed var(--ink-3)}
+.msg .van-t{display:block;font-size:10.5px;font-weight:600;color:var(--clay-d);margin-top:1px}
+.msg.gone{opacity:0;transform:scale(.96);transition:opacity .35s,transform .35s}
+.chatnote{font-size:11.5px;color:var(--ink-3);padding:0 11px 6px}
+.lightbox{position:fixed;inset:0;z-index:50;background:rgba(10,12,11,.88);display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out}
+.lightbox img{max-width:100%;max-height:100%;border-radius:8px}
+.opengames{display:flex;flex-direction:column}
+.og{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.og:last-child{border-bottom:0}
+.og .sub2{font-size:12px;color:var(--ink-3)}
+.og .btn{padding:8px 14px}
+.tick{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--ink-2);cursor:pointer}
+.tick input{width:18px;height:18px;margin:1px 0 0;flex:none;accent-color:var(--ink)}
 .badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:99px;background:var(--clay);color:#fff;font-size:11px;line-height:18px;margin-left:5px;font-weight:600}
 .mine{display:flex;flex-direction:column}
 .mrow{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer;text-align:left;background:none;border-left:0;border-right:0;border-top:0;font:inherit;color:inherit}
@@ -206,10 +234,18 @@ input.txt:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
     <div id="matbox" hidden style="margin-top:10px"></div>
     
     <div id="chat" class="chat" hidden>
-      <div class="hd"><span class="lbl">Chat</span><span class="cap" id="chatWho"></span></div>
+      <div class="hd"><span><span class="lbl">Chat</span> <span class="cap" id="chatWho"></span></span><button type="button" class="vanbtn" id="chatVanish" aria-pressed="false" title="Messages you send disappear 10 seconds after your opponent sees them">Vanish off</button></div>
       <div class="chatlog" id="chatLog" aria-live="polite"></div>
+      <p class="chatnote" id="chatNote" hidden>Vanish mode: what you send now disappears 10 seconds after it's been seen.</p>
       <div class="chips" id="chatChips"></div>
-      <form class="chatin" id="chatForm"><input class="txt" id="chatText" maxlength="500" autocomplete="off" placeholder="Message" aria-label="Message"><button class="btn go" type="submit">Send</button></form>
+      <div class="emojis" id="chatEmojis" hidden></div>
+      <form class="chatin" id="chatForm">
+        <button type="button" class="iconbtn" id="chatEmojiBtn" aria-label="Emoji" aria-expanded="false" aria-controls="chatEmojis">&#128578;</button>
+        <button type="button" class="iconbtn" id="chatPicBtn" aria-label="Send a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="15" rx="2.5"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5.5-5.5L6 20"/></svg></button>
+        <input type="file" id="chatPic" accept="image/*" hidden>
+        <input class="txt" id="chatText" maxlength="500" autocomplete="off" placeholder="Message" aria-label="Message">
+        <button class="btn go" type="submit">Send</button>
+      </form>
     </div>
     
     <h2 style="margin-top:18px">Move sheet</h2>
@@ -1133,7 +1169,7 @@ function start(){
  return booting}
 
 /* ---------- opening, creating, joining ---------- */
-async function create(target){
+async function create(target,listed){
  var nm=myName();if(!nm)throw new Error("name");
  await start();
  for(var tries=0;tries<5;tries++){
@@ -1141,7 +1177,7 @@ async function create(target){
   var data={v:1,code:c,created:now,updated:now,target:target,
    host:{uid:uid,name:nm},guest:null,players:[uid],score:{h:0,g:0},gameNo:1,games:[],phase:"waiting",
    cur:{no:1,events:[],chain:{h:{tip:ch[0],rev:[ch[1]]}},turn:null,step:"wait",dice:null,rolls:0,cube:1,owner:null,offer:null},
-   next:null,seen:{h:now},rematch:null};
+   next:null,seen:{h:now},rematch:null,listed:listed!==false};
   try{await be.create(c,data);return c}catch(e){if(String(e&&e.message).indexOf("taken")<0)throw e}}
  throw new Error("create")}
 async function join(c){
@@ -1162,6 +1198,7 @@ async function join(c){
   return{data:d,result:"joined"}})}
 
 function open(c){
+ stopOpenPoll();
  return start().then(function(){
   detach(true);
   code=c;applied=0;curNo=0;doc=null;startedRoll=-1;settleKey="";warn("");
@@ -1443,7 +1480,7 @@ function rematch(btn){
  if(doc.rematch){join(doc.rematch).then(function(){return open(doc.rematch)}).catch(function(){open(doc.rematch)});return}
  busyTx=true;if(btn)btn.disabled=true;
  var old=code,target=doc.target;
- create(target).then(function(nc){
+ create(target,false).then(function(nc){
   return be.update(old,function(d){if(d.rematch)return{result:d.rematch};d.rematch=nc;return{data:d,result:nc}})
    .then(function(rc){busyTx=false;return open(rc)})})
  .catch(fail)}
@@ -1520,48 +1557,165 @@ document.addEventListener("visibilitychange",function(){
  if(!document.hidden&&code&&!spect&&be){var p={};p["seen."+side]=Date.now();be.touch(code,p).catch(function(){})}
  title();if(!document.hidden)markTab()});
 
-/* ---------- chat ---------- */
+/* ---------- chat ----------
+   Text (emoji included), photos and vanishing messages.
+   Photos are shrunk in the browser and stored inline in the chat message,
+   so no separate file storage (and no Firebase billing) is needed.
+   A vanishing message is deleted 10 seconds after the RECIPIENT first has
+   it on screen, so it can't vanish before they've seen it. */
+var VANISH_MS=window.GAMMON_VANISH_MS||10000,VANISH_MAX=86400000;
+var vanSeen={},vanDeleting={},vanTick=null,vanMode=false;
 function chatStart(){
  if(!be||!code)return;
  if(chatUnsub)chatUnsub();
- chatMsgs=[];$("chat").hidden=false;
+ chatMsgs=[];vanSeen={};vanDeleting={};$("chat").hidden=false;
  $("chatWho").textContent="with "+oppName();
+ setVanish(lsGet("gl-vanish:"+code)==="1");
  chatUnsub=be.chatWatch(code,function(list){chatMsgs=list||[];renderChat()})}
+function setVanish(on){
+ vanMode=!!on;
+ var b=$("chatVanish");if(!b)return;
+ b.setAttribute("aria-pressed",String(vanMode));b.textContent=vanMode?"Vanish on":"Vanish off";
+ $("chat").classList.toggle("vanish",vanMode);
+ $("chatNote").hidden=!vanMode;
+ $("chatText").placeholder=vanMode?"Vanishing message":"Message";
+ if(code)lsSet("gl-vanish:"+code,vanMode?"1":"0")}
+function chatVisible(){return !$("pane-play").hidden&&!$("chat").hidden&&!document.hidden}
+function onlyEmoji(t){
+ if(!t||t.length>16)return false;
+ try{return /^(?:\p{Extended_Pictographic}|\p{Emoji_Component}|‍|️|\s)+$/u.test(t)&&/\p{Extended_Pictographic}/u.test(t)}catch(e){return false}}
+function vanishLeft(m,now){
+ // ms left before this message should go; Infinity if not counting yet
+ if(now-m.ts>VANISH_MAX)return 0;
+ if(m.uid===uid)return Infinity;          // sender waits for the recipient to see it
+ var seen=vanSeen[m.id];
+ if(!seen)return Infinity;
+ return VANISH_MS-(now-seen)}
+function dropVanished(m){
+ if(!m.id||vanDeleting[m.id])return;
+ vanDeleting[m.id]=1;
+ if(be.chatDelete)be.chatDelete(code,m.id).catch(function(){})}
 function renderChat(){
  var log=$("chatLog");if(!log)return;
  var near=log.scrollHeight-log.scrollTop-log.clientHeight<40;
+ var now=Date.now(),vis=chatVisible(),anyVan=false,shown=0;
  log.innerHTML="";
- if(!chatMsgs.length){var e=document.createElement("p");e.className="cap";e.textContent="Say hello — messages stay with this game.";log.appendChild(e)}
  chatMsgs.forEach(function(m){
-  var div=document.createElement("div");div.className="msg "+(m.uid===uid?"me":"them");
-  div.textContent=m.text;
+  if(m.vanish){
+   if(m.uid!==uid&&vis&&!vanSeen[m.id])vanSeen[m.id]=now;
+   var left=vanishLeft(m,now);
+   if(left<=0){dropVanished(m);return}
+   anyVan=true}
+  var mine=m.uid===uid,div=document.createElement("div");
+  div.className="msg "+(mine?"me":"them");
+  if(m.img&&String(m.img).indexOf("data:image/")===0){
+   div.classList.add("pic");
+   var im=document.createElement("img");im.src=m.img;im.alt="Photo from "+(mine?"you":(m.name||"opponent"));
+   im.loading="lazy";im.addEventListener("click",function(){lightbox(m.img)});
+   im.addEventListener("load",function(){if(near)log.scrollTop=log.scrollHeight});
+   div.appendChild(im)}
+  else{
+   div.appendChild(document.createTextNode(m.text||""));
+   if(onlyEmoji(m.text))div.classList.add("big")}
+  if(m.vanish){
+   div.classList.add("van");
+   var vt=document.createElement("span");vt.className="van-t";
+   var lf=vanishLeft(m,now);
+   if(lf===Infinity)vt.textContent=mine?"vanishes once "+oppName()+" sees it":"vanishes after you read it";
+   else{vt.textContent="vanishes in "+Math.max(1,Math.ceil(lf/1000))+"s";if(lf<700)div.classList.add("gone")}
+   div.appendChild(vt)}
   var sm=document.createElement("small");
-  sm.textContent=(m.uid===uid?"You":m.name||"Opponent")+" · "+new Date(m.ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-  div.appendChild(sm);log.appendChild(div)});
+  sm.textContent=(mine?"You":m.name||"Opponent")+" · "+new Date(m.ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  div.appendChild(sm);log.appendChild(div);shown++});
+ if(!shown){var e=document.createElement("p");e.className="cap";
+  e.textContent=chatMsgs.length?"Nothing left here — vanished messages are gone for both of you.":"Say hello — messages stay with this game unless you switch Vanish on.";
+  log.appendChild(e)}
  if(near||!log.dataset.init){log.scrollTop=log.scrollHeight;log.dataset.init="1"}
+ if(anyVan&&!vanTick)vanTick=setInterval(function(){if(code)renderChat()},500);
+ if(!anyVan&&vanTick){clearInterval(vanTick);vanTick=null}
  markTab()}
+function lightbox(src){
+ var d=document.createElement("div");d.className="lightbox";d.setAttribute("role","dialog");d.setAttribute("aria-label","Photo");
+ var im=document.createElement("img");im.src=src;im.alt="Photo";d.appendChild(im);
+ var close=function(){d.remove();document.removeEventListener("keydown",esc1)};
+ var esc1=function(e){if(e.key==="Escape")close()};
+ d.addEventListener("click",close);document.addEventListener("keydown",esc1);
+ document.body.appendChild(d)}
 function unread(){
  if(!code)return 0;
- var seen=+(lsGet("gl-chatseen:"+code)||0),n=0;
+ var seen=+(lsGet("gl-chatseen:"+code+":"+uid)||0),n=0;
  chatMsgs.forEach(function(m){if(m.uid!==uid&&m.ts>seen)n++});return n}
 function markTab(){
  var t=$("tab-play");if(!t)return;
  var playing=!$("pane-play").hidden&&!document.hidden;
- if(playing&&code&&chatMsgs.length)lsSet("gl-chatseen:"+code,String(chatMsgs[chatMsgs.length-1].ts));
+ if(playing&&code&&chatMsgs.length)lsSet("gl-chatseen:"+code+":"+uid,String(chatMsgs[chatMsgs.length-1].ts));
  var n=playing?0:unread();
  t.innerHTML="Play"+(n?'<span class="badge">'+n+'</span>':"")}
+function postChat(body){
+ if(!be||!code||spect)return Promise.resolve(false);
+ body.uid=uid;body.by=side;body.name=meName();body.ts=Date.now();
+ if(vanMode)body.vanish=true;
+ return be.chatSend(code,body).then(function(){return true},function(){
+  say(body.img?"Photo not sent. Check your connection and try again.":"Message not sent. Check your connection.");return false})}
 function sendChat(text){
  text=(text||"").trim().slice(0,500);
- if(!text||!be||!code||spect)return;
+ if(!text)return;
  if(Date.now()-lastSend<700)return;lastSend=Date.now();
- be.chatSend(code,{uid:uid,by:side,name:meName(),text:text,ts:Date.now()})
-  .catch(function(){say("Message not sent. Check your connection.")})}
+ postChat({text:text})}
+/* Shrink a photo to fit comfortably in one chat message (well under
+   Firestore's 1 MB document limit). */
+function shrinkPhoto(file){
+ return new Promise(function(res,rej){
+  var url=URL.createObjectURL(file),img=new Image();
+  img.onload=function(){
+   URL.revokeObjectURL(url);
+   var side0=Math.max(img.naturalWidth,img.naturalHeight)||1,max=1280,q=0.78,out="";
+   for(var i=0;i<7;i++){
+    var k=Math.min(1,max/side0),w=Math.max(1,Math.round(img.naturalWidth*k)),h=Math.max(1,Math.round(img.naturalHeight*k));
+    var c=document.createElement("canvas");c.width=w;c.height=h;
+    var g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,w,h);g.drawImage(img,0,0,w,h);
+    out=c.toDataURL("image/jpeg",q);
+    if(out.length<=380000)break;
+    if(q>0.55)q-=0.1;else max=Math.round(max*0.75)}
+   if(!out||out.length>880000)rej(new Error("too big"));else res(out)};
+  img.onerror=function(){URL.revokeObjectURL(url);rej(new Error("unreadable"))};
+  img.src=url})}
 (function(){
  var f=$("chatForm");if(!f)return;
- f.addEventListener("submit",function(e){e.preventDefault();var i=$("chatText");sendChat(i.value);i.value=""});
+ f.addEventListener("submit",function(e){e.preventDefault();var i=$("chatText");sendChat(i.value);i.value="";
+  $("chatEmojis").hidden=true;$("chatEmojiBtn").setAttribute("aria-expanded","false")});
  var chips=["Good luck","Nice roll","Ouch","Good game"];
  $("chatChips").innerHTML=chips.map(function(c){return '<button type="button" class="chip">'+c+'</button>'}).join("");
- $("chatChips").addEventListener("click",function(e){var b=e.target.closest(".chip");if(b)sendChat(b.textContent)})})();
+ $("chatChips").addEventListener("click",function(e){var b=e.target.closest(".chip");if(b)sendChat(b.textContent)});
+ /* emoji */
+ var EM=["😀","😂","😅","😬","😎","🤔","😮","😱","😭","😡","🙃","😴","👍","👎","👏","🙏","💪","🤞","🔥","💀","🎲","🍀","🎉","🍺"];
+ var pal=$("chatEmojis");
+ pal.innerHTML=EM.map(function(x){return '<button type="button" aria-label="'+x+'">'+x+'</button>'}).join("");
+ $("chatEmojiBtn").addEventListener("click",function(){
+  var open=pal.hidden;pal.hidden=!open;this.setAttribute("aria-expanded",String(open))});
+ pal.addEventListener("click",function(e){
+  var b=e.target.closest("button");if(!b)return;
+  var i=$("chatText"),a=i.selectionStart==null?i.value.length:i.selectionStart,z=i.selectionEnd==null?a:i.selectionEnd;
+  i.value=(i.value.slice(0,a)+b.textContent+i.value.slice(z)).slice(0,500);
+  var p=a+b.textContent.length;
+  /* desktop: put the cursor back in the box after the emoji. On phones this
+     would pop the keyboard over the palette, so leave focus alone there. */
+  if(window.matchMedia&&matchMedia("(pointer:fine)").matches)i.focus({preventScroll:true});
+  try{i.setSelectionRange(p,p)}catch(err){}});
+ /* photos */
+ $("chatPicBtn").addEventListener("click",function(){$("chatPic").click()});
+ $("chatPic").addEventListener("change",function(){
+  var file=this.files&&this.files[0];this.value="";
+  if(!file)return;
+  if(!/^image\//.test(file.type||"image/")){say("That isn't a picture.");return}
+  var btn=$("chatPicBtn");btn.disabled=true;
+  shrinkPhoto(file).then(function(data){return postChat({img:data})})
+   .catch(function(e){say(String(e.message)==="too big"?"That photo is too large to send, even shrunk.":"Couldn't read that picture. Try a JPEG or PNG.")})
+   .then(function(){btn.disabled=false})});
+ /* vanish toggle */
+ $("chatVanish").addEventListener("click",function(){setVanish(!vanMode)});
+ /* start countdowns the moment the chat comes into view */
+ document.addEventListener("visibilitychange",function(){if(code&&!document.hidden)renderChat()})})();
 
 /* ---------- lobby ---------- */
 function lobbyMsg(id,t){var el=$(id);if(el)el.textContent=t}
@@ -1570,12 +1724,16 @@ function lobby(){
  if(!cfg&&!MOCK){
   el.innerHTML='<h2>Play a friend</h2><div class="card" style="margin-top:12px"><p>Online play isn\'t switched on for this copy yet.</p>'+
    '<p class="cap">It needs a free Firebase project for the two browsers to talk through. The steps are in SETUP.md — about ten minutes, no card required. Everything else works without it.</p></div>';return}
- var h='<h2>Play a friend</h2><p class="cap" style="margin-top:4px">Start a game and send the link, or join with a code. Games wait if either of you leaves — pick up any time.</p>'+
+ var listedPref=lsGet("gl-listed")!=="0";
+ var h='<h2>Play a friend</h2><p class="cap" style="margin-top:4px">Join an open game below, start your own, or join with a code. Games wait if either of you leaves — pick up any time.</p>'+
   '<div class="cards">'+
   '<div class="card"><label class="lbl" for="olName">Your name</label><input class="txt" id="olName" maxlength="24" autocomplete="nickname" placeholder="Sam" value="'+escA(myName())+'"></div>'+
+  '<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span class="lbl">Open games</span><button class="linkbtn" id="olRefresh">Refresh</button></div>'+
+   '<div class="opengames" id="olOpen"><p class="cap">Looking for games.</p></div></div>'+
   '<div class="card"><span class="lbl">New match</span><div class="row" id="olLen">'+
    [1,3,5,7].map(function(n){return '<button class="btn" data-olen="'+n+'" aria-pressed="'+(n===selLen)+'">'+n+' point'+(n>1?"s":"")+'</button>'}).join("")+
-   '</div><button class="btn go" id="olCreate">Create game</button><p class="cap" id="olMsg1"></p></div>'+
+   '</div><label class="tick"><input type="checkbox" id="olListed"'+(listedPref?' checked':'')+'><span>Show in Open games, so anyone using this site can join without the code</span></label>'+
+   '<button class="btn go" id="olCreate">Create game</button><p class="cap" id="olMsg1"></p></div>'+
   '<div class="card"><label class="lbl" for="olCode">Join with a code</label><div class="row"><input class="txt" id="olCode" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="K7M2QX" style="flex:1 1 140px;font-family:var(--font-m);letter-spacing:.1em;text-transform:uppercase"><button class="btn go" id="olJoin" style="flex:0 0 auto">Join</button></div><p class="cap" id="olMsg2"></p></div>'+
   '<div class="card"><span class="lbl">Your games</span><div class="mine" id="olMine"><p class="cap">Loading.</p></div></div>'+
   '</div>';
@@ -1587,7 +1745,18 @@ function lobby(){
  $("olCreate").onclick=function(){
   if(!myName()){lobbyMsg("olMsg1","Add your name first.");$("olName").focus();return}
   var b=this;b.disabled=true;lobbyMsg("olMsg1","Creating.");
-  create(selLen).then(function(c){return open(c)}).catch(function(e){b.disabled=false;lobbyMsg("olMsg1",errText(e))})};
+  var listed=$("olListed").checked;lsSet("gl-listed",listed?"1":"0");
+  create(selLen,listed).then(function(c){return open(c)}).catch(function(e){b.disabled=false;lobbyMsg("olMsg1",errText(e))})};
+ $("olRefresh").onclick=function(){loadOpen()};
+ $("olOpen").onclick=function(e){
+  var b=e.target.closest("[data-join]");if(!b)return;
+  var c=b.getAttribute("data-join");
+  if(!myName()){lobbyMsg("olMsg1","");$("olName").focus();b.textContent="Add your name above";return}
+  b.disabled=true;b.textContent="Joining";
+  join(c).then(function(){return open(c)}).catch(function(e2){
+   b.disabled=false;b.textContent="Join";
+   if(String(e2.message)==="full"){b.textContent="Taken";b.disabled=true;setTimeout(loadOpen,800);return}
+   var row=b.closest(".og");if(row){var n=row.querySelector(".sub2");if(n)n.textContent=errText(e2)}})};
  $("olJoin").onclick=function(){
   var c=($("olCode").value||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
   if(c.length!==6){lobbyMsg("olMsg2","Codes are six letters and numbers.");return}
@@ -1596,7 +1765,26 @@ function lobby(){
   join(c).then(function(){return open(c)}).catch(function(e){b.disabled=false;
    if(String(e.message)==="full"){lobbyMsg("olMsg2","That game already has two players — opening it to watch.");open(c);return}
    lobbyMsg("olMsg2",errText(e))})};
- loadMine()}
+ loadMine();loadOpen();startOpenPoll()}
+var openPoll=null;
+function startOpenPoll(){stopOpenPoll();openPoll=setInterval(function(){
+ if($("pane-online")&&!$("pane-online").hidden&&!document.hidden)loadOpen()},15000)}
+function stopOpenPoll(){if(openPoll){clearInterval(openPoll);openPoll=null}}
+function ago(t){var m=Math.round((Date.now()-t)/60000);
+ return m<1?"just now":m<60?m+" min ago":m<1440?Math.round(m/60)+" h ago":Math.round(m/1440)+" d ago"}
+/* Games waiting for a second player that their host chose to list. */
+function loadOpen(){
+ start().then(function(){return be.openGames?be.openGames():[]}).then(function(list){
+  var el=$("olOpen");if(!el)return;
+  var now=Date.now();
+  list=list.filter(function(d){return d&&d.phase==="waiting"&&!d.guest&&d.listed!==false&&d.host&&d.host.uid!==uid&&now-(d.created||0)<2*86400000})
+   .sort(function(a,b){return (b.created||0)-(a.created||0)}).slice(0,12);
+  if(!list.length){el.innerHTML='<p class="cap">No one is waiting right now. Create a game and it appears here for others.</p>';return}
+  el.innerHTML=list.map(function(d){
+   return '<div class="og"><span><b>'+esc(d.host.name||"Someone")+'</b> <span class="cap">· match to '+d.target+'</span></span>'+
+    '<button class="btn go" data-join="'+escA(d.code)+'">Join</button>'+
+    '<span class="sub2">started '+ago(d.created||now)+'</span></div>'}).join("")})
+ .catch(function(e){var el=$("olOpen");if(el)el.innerHTML='<p class="cap">'+esc(errText(e))+'</p>'})}
 function errText(e){var m=String(e&&e.message||e);
  return m==="name"?"Add your name first.":m==="missing"?"There's no game with that code.":m==="tamper"?"That game's dice keys don't check out.":
   m==="noconfig"?"Online play isn't set up on this copy.":m==="load"?"Couldn't load the online components. Check your connection.":"Something went wrong: "+m}
@@ -1624,7 +1812,9 @@ api.roll=roll;api.double=double;api.turnDone=turnDone;api.detach=function(){deta
 api.afterEnd=function(box){if(!api.replaying&&doc)afterEndBox()};
 api.gameKey=function(){return code?code+":"+curNo+":"+side:null};
 api.replaying=false;
-function tab(which){if(which==="online")lobby();if(which==="play")markTab()}
+function tab(which){
+ if(which==="online")lobby();else stopOpenPoll();
+ if(which==="play"){if(code&&chatUnsub)renderChat();else markTab()}}
 
 /* ---------- boot: deep links ---------- */
 function boot(){

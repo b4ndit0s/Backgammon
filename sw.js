@@ -1,5 +1,5 @@
-/* Gammon Ledger service worker — build 0c61aadebb, Firebase SDK 12.19.0 */
-const CACHE = "gammon-0c61aadebb";
+/* Gammon Ledger service worker — build f6531e8c0e, Firebase SDK 12.19.0 */
+const CACHE = "gammon-f6531e8c0e";
 const FONTS = "gammon-fonts";
 const SHELL = [
   "./", "./index.html", "./manifest.webmanifest", "./firebase-config.js", "./backend-firebase.js",
