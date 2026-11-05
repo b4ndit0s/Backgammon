@@ -5,8 +5,9 @@
    These values are safe to publish: access is controlled by the security
    rules in firestore.rules, not by keeping this file secret. */
 window.GAMMON_FIREBASE = {
-  apiKey: "PASTE_API_KEY",
-  authDomain: "PASTE_PROJECT_ID.firebaseapp.com",
-  projectId: "PASTE_PROJECT_ID",
-  appId: "PASTE_APP_ID"
+  apiKey: "AIzaSyB3bb7xaNcwzZJ5MGkSzQTEBwImqMtEz50",
+  authDomain: "backgammon-626cf.firebaseapp.com",
+  projectId: "backgammon-626cf",
+  appId: "backgammon-626cf.firebasestorage.app"
 };
+
