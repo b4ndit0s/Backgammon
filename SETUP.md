@@ -39,10 +39,13 @@ writes a day — a whole backgammon game uses a few hundred.
    and copy four values across: `apiKey`, `authDomain`, `projectId`, `appId`.
    (These are safe to publish — the security rules below are what protect the data.)
 
-### c. Turn on anonymous sign-in
-1. **Build → Authentication → Get started**.
-2. **Sign-in method → Anonymous → Enable → Save**.
-3. **Settings → Authorized domains → Add domain** → `<your-username>.github.io`.
+### c. Turn on sign-in
+1. **Authentication → Get started** (search the console for "Authentication").
+2. **Sign-in method → Email/Password → Enable → Save.** (Leave "Email link"
+   off.) This is what players' accounts use.
+3. **Sign-in method → Anonymous → Enable → Save.** Only needed so games
+   started before accounts existed keep working; new games always use accounts.
+4. **Settings → Authorized domains → Add domain** → `<your-username>.github.io`.
 
 ### d. Create the database and its rules
 1. **Build → Firestore Database → Create database**.
@@ -59,13 +62,18 @@ old one). Reload the site; the **Online** tab now lets you create and join games
 
 ## Playing
 
-- **Online → your name → pick a match length → Create game.** Your friend can
+- **Online → create an account** (name, email, password) the first time.
+  Your friend makes their own. On any other phone, browser or laptop, choose
+  **I have an account** and sign in — your games are there.
+- **Online → pick a match length → Create game.** Your friend can
   join from **Open games** on their Online tab with one tap, or from the link or
   six-character code. The game starts the moment they join.
 - Untick **Show in Open games** when you create a game if you don't want anyone
   else who visits the site to see it; then only the link or code gets them in.
-- Either of you can close the page. The game waits under **Online → Your games**
-  and picks up exactly where it was — live if you're both on, or a move at a time.
+- Either of you can close the page for hours or days. When you come back, a
+  green **Resume** bar at the top of the Play tab takes you straight to the game
+  (it's also under **Online → Your games**) — live if you're both on, or a move
+  at a time.
 - A green dot next to your friend's name means they have the game open now.
 - **Chat** sits under the board. Only the two players can see it. Tap the
   smiley for emoji, the picture button to send a photo (it's shrunk to a few
@@ -74,18 +82,25 @@ old one). Reload the site; the **Online** tab now lets you create and join games
   10 seconds after your opponent has them on screen — from both screens and
   from the database. If they're not looking, it waits until they are. It can't
   stop a screenshot.
-- Anyone else with the link can **watch**, but can't move or read the chat.
+- **Games are private once both players have joined.** Nobody else can watch,
+  join or read the chat, even with the link — they're told the game is private.
+  While a game is still waiting for its second player, anyone with the code can
+  take the seat (and anyone on the site can, if it's listed in Open games).
 
 ## Things to know
 
-- **Your seat lives in your browser.** Firebase signs you in anonymously, so a
-  game belongs to the browser you created or joined it from. Clearing that
-  browser's site data, or switching phone to laptop, loses the seat and the
-  dice key for games in progress. Finish games on the device you started them.
-- **The dice are fair between you.** Each browser commits to a private chain of
+- **Your seat belongs to your account**, not your browser. Safari, the
+  home-screen app, a link opened inside WhatsApp and your laptop all count as
+  different browsers, which is why you need to sign in on each.
+- **Forgot your password?** On the sign-in card choose **I have an account →
+  Forgot password?** and Firebase emails you a reset link (check spam).
+- **The dice are fair between you.** Each player commits to a private chain of
   random values at the start of each game; every roll combines both, and each
   revealed value is checked against the one before it. Neither player can pick
-  or re-roll dice or see the other's upcoming rolls. If a roll ever fails the
+  or re-roll dice or see the other's upcoming rolls. Each player's secret is
+  saved in their own account (only they can read it), which is what lets them
+  roll from any device. As the Firebase project owner you could read anything
+  in the console, so you're trusted not to peek. If a roll ever fails the
   check, a warning appears above the board. One small gap: someone who digs
   into their browser's developer tools could work out their *own* next roll
   just before deciding whether to double.

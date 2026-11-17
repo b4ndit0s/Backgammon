@@ -1,37 +1,87 @@
 /* Gammon Ledger — Firebase backend for online play.
    Uses the Firebase compat SDK loaded from ./vendor/. The game talks to this
    through a small interface so it never touches Firebase directly:
-     start()            -> Promise<uid>          anonymous sign-in
-     create(code, data) -> Promise               fails with "taken" if the code exists
-     update(code, fn)   -> Promise<result>       transaction; fn(data) returns {data, result}
-     watch(code, cb)    -> unsubscribe           live match document
-     mine(uid)          -> Promise<[match]>      matches this player sits in
-     touch(code, patch) -> Promise               small field update (presence)
-     openGames()        -> Promise<[match]>      matches waiting for a second player
-     chatSend(code, m)  -> Promise
-     chatDelete(code,id)-> Promise               removes a vanishing message
-     chatWatch(code,cb) -> unsubscribe           last 60 messages, oldest first, each with its id */
+     start()                 -> Promise<account|null>  who is signed in, if anyone
+     signUp(email, pw, name) -> Promise<account>       new account; an existing
+                                                        anonymous player is upgraded
+                                                        in place, keeping their games
+     signIn(email, pw)       -> Promise<account>
+     signOut()               -> Promise
+     resetPassword(email)    -> Promise                 emails a reset link
+     setName(name)           -> Promise
+     keyGet(id)              -> Promise<seed|null>      this account's private dice key
+     keyPut(id, seed)        -> Promise<seed>           stores it once; returns the stored one
+     create(code, data)      -> Promise                 fails with "taken" if the code exists
+     update(code, fn)        -> Promise<result>         transaction; fn(data) returns {data, result}
+     watch(code, cb, onErr)  -> unsubscribe             live match document
+     mine(uid)               -> Promise<[match]>        matches this player sits in
+     openGames()             -> Promise<[match]>        listed matches with an empty seat
+     touch(code, patch)      -> Promise                 small field update (presence)
+     chatSend(code, m)       -> Promise
+     chatDelete(code, id)    -> Promise                 removes a vanishing message
+     chatWatch(code, cb)     -> unsubscribe             last 60 messages, oldest first, with ids
+   An account is {uid, anon, email, name}. */
 (function () {
   "use strict";
   // Firestore rejects `undefined`; a JSON round trip drops it.
   function clean(o) { return JSON.parse(JSON.stringify(o)); }
+  function info(u) {
+    return u ? { uid: u.uid, anon: !!u.isAnonymous, email: u.email || "", name: u.displayName || "" } : null;
+  }
 
   window.GammonBackendFactory = function (cfg) {
     var app = firebase.apps.length ? firebase.app() : firebase.initializeApp(cfg);
     var auth = firebase.auth(app);
     var fs = firebase.firestore(app);
     var matches = fs.collection("matches");
+    function keyRef(id) {
+      return fs.collection("keys").doc(auth.currentUser.uid).collection("seeds").doc(id);
+    }
 
     return {
       start: function () {
         return new Promise(function (resolve, reject) {
-          var off = auth.onAuthStateChanged(function (user) {
-            off();
-            if (user) { resolve(user.uid); return; }
-            auth.signInAnonymously()
-              .then(function (cred) { resolve(cred.user.uid); })
-              .catch(reject);
-          }, reject);
+          var off = auth.onAuthStateChanged(function (u) { off(); resolve(info(u)); }, reject);
+        });
+      },
+
+      signUp: function (email, pw, name) {
+        var cur = auth.currentUser, made;
+        if (cur && cur.isAnonymous) {
+          // Same user id, so games already started in this browser come along.
+          made = cur.linkWithCredential(firebase.auth.EmailAuthProvider.credential(email, pw))
+            .then(function (c) { return c.user; });
+        } else {
+          made = auth.createUserWithEmailAndPassword(email, pw).then(function (c) { return c.user; });
+        }
+        return made.then(function (u) {
+          return u.updateProfile({ displayName: name }).then(function () { return info(auth.currentUser); });
+        });
+      },
+
+      signIn: function (email, pw) {
+        return auth.signInWithEmailAndPassword(email, pw).then(function (c) { return info(c.user); });
+      },
+
+      signOut: function () { return auth.signOut(); },
+
+      resetPassword: function (email) { return auth.sendPasswordResetEmail(email); },
+
+      setName: function (name) {
+        var u = auth.currentUser;
+        return u ? u.updateProfile({ displayName: name }) : Promise.resolve();
+      },
+
+      keyGet: function (id) {
+        return keyRef(id).get().then(function (s) { return s.exists ? s.data().seed : null; });
+      },
+
+      keyPut: function (id, seed) {
+        var ref = keyRef(id);
+        // Keys are write-once: if one is already stored, that's the one in use.
+        return ref.get().then(function (s) {
+          if (s.exists) return s.data().seed;
+          return ref.set({ seed: seed, ts: Date.now() }).then(function () { return seed; });
         });
       },
 
@@ -71,8 +121,8 @@
       },
 
       openGames: function () {
-        // One equality filter needs no composite index; the page filters and sorts.
-        return matches.where("phase", "==", "waiting").limit(40).get()
+        // These two filters are what the security rules allow anyone to list.
+        return matches.where("guest", "==", null).where("listed", "==", true).limit(40).get()
           .then(function (q) { return q.docs.map(function (d) { return d.data(); }); });
       },
 

@@ -133,6 +133,11 @@ textarea{width:100%;height:190px;font-family:var(--font-m);font-size:11px;line-h
 .dot.on{background:var(--good)}
 .olbar .code{font-family:var(--font-m);font-size:12px;letter-spacing:.06em;color:var(--ink-3)}
 .linkbtn{background:none;border:0;padding:0;font:inherit;font-size:13px;color:var(--blue-d);text-decoration:underline;cursor:pointer}
+.resume{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--good-bg);border:1px solid var(--good);border-radius:9px;padding:8px 10px 8px 12px;margin-bottom:10px;font-size:13.5px;color:var(--ink)}
+.resume .btn{padding:7px 14px;flex:none}
+.acct{display:flex;flex-direction:column;gap:8px}
+.acct .row .btn{flex:1 1 120px}
+.who{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;font-size:13px;color:var(--ink-2);margin-top:6px}
 .warnbar{background:var(--clay-bg);color:var(--clay-d);border:1px solid var(--clay);border-radius:8px;padding:8px 11px;font-size:13px;margin-bottom:10px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
 .cards{display:flex;flex-direction:column;gap:12px;margin-top:12px}
@@ -213,7 +218,7 @@ input.txt:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
   </div>
 
   <section id="pane-play">
-    <div id="olwarn" class="warnbar" hidden></div><div id="olbar" class="olbar" hidden></div>
+    <div id="olresume" class="resume" hidden></div><div id="olwarn" class="warnbar" hidden></div><div id="olbar" class="olbar" hidden></div>
     <svg id="bd" class="board" viewBox="0 0 716 584" role="img" aria-label="Backgammon board"></svg>
     <p class="say" id="say">Setting up.</p>
     <div class="stats" style="margin-top:12px">
@@ -1074,7 +1079,7 @@ if(cfg&&(!cfg.apiKey||/PASTE|YOUR_/i.test(cfg.apiKey)))cfg=null;
 var MOCK=window.GAMMON_BACKEND==="mock";
 var HEARTBEAT=window.GAMMON_HEARTBEAT_MS||45000;
 var BASE_TITLE=document.title,DEFAULT_OPP=OPP;
-var be=null,uid=null,booting=null;
+var be=null,uid=null,booting=null,acct=null,pending=null,acctMode="new";
 var code=null,side=null,opp=null,spect=false;
 var doc=null,unsub=null,chatUnsub=null;
 var applied=0,curNo=0,busyTx=false,animating=false,startedRoll=-1,settleKey="";
@@ -1088,7 +1093,14 @@ function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 function other(x){return x==="h"?"g":"h"}
 function bs(x){return x===side?P:A}
 function escA(t){return esc(t).replace(/"/g,"&quot;")}
-function myName(){return (lsGet("gl-name")||"").trim().slice(0,24)}
+function myName(){return ((acct&&!acct.anon&&acct.name)||lsGet("gl-name")||"").trim().slice(0,24)}
+/* Online play needs a real account: an anonymous seat only lives in one browser. */
+function member(){return !!(acct&&!acct.anon)}
+function setAcct(a){
+ acct=a||null;uid=acct?acct.uid:null;
+ if(member()){lsSet("gl-online","1");if(acct.name)lsSet("gl-name",acct.name)}}
+function codeOf(e){return String(e&&(e.code||e.message)||e)}
+function isPrivate(e){var m=codeOf(e);return m==="full"||/permission/i.test(m)}
 function sum(a){return a.reduce(function(x,y){return x+y},0)}
 function enc(t){return new TextEncoder().encode(t)}
 function hex(b){var o="";for(var i=0;i<b.length;i++)o+=(b[i]<16?"0":"")+b[i].toString(16);return o}
@@ -1103,12 +1115,31 @@ function link(c){return location.origin+location.pathname+"#join="+c}
 /* ---------- dice from two hash chains ---------- */
 async function buildChain(seed){var c=new Array(N+1);c[N]=seed;
  for(var k=N-1;k>=0;k--)c[k]=hex(await sha(unhex(c[k+1])));return c}
+/* Each player's dice key is kept in this browser AND in their account
+   (readable only by them), so they can roll from any device. The key is
+   saved to the account before its chain tip is ever published. */
 async function chainFor(cd,no,sd,create){
- var key="gl-seed:"+cd+":"+no+":"+sd;
+ var key="gl-seed:"+cd+":"+no+":"+sd,id=cd+"-"+no+"-"+sd;
  if(chains[key])return chains[key];
- var seed=lsGet(key);
- if(!seed){if(!create)return null;var r=new Uint8Array(32);crypto.getRandomValues(r);seed=hex(r);lsSet(key,seed)}
+ var seed=lsGet(key),server;
+ if(be&&be.keyGet&&uid){try{server=await be.keyGet(id)}catch(e){server=undefined}}
+ if(server)seed=server;
+ if(!seed){
+  if(!create)return null;
+  var r=new Uint8Array(32);crypto.getRandomValues(r);seed=hex(r)}
+ if(!server&&be&&be.keyPut&&uid&&(server===null||create)){
+  try{seed=await be.keyPut(id,seed)}catch(e){if(create)throw new Error("keysave")}}
+ lsSet(key,seed);
  chains[key]=await buildChain(seed);return chains[key]}
+/* After an anonymous player upgrades to an account, copy the dice keys this
+   browser holds into the account so their games work on other devices. */
+function uploadLocalKeys(){
+ if(!be||!be.keyPut||!uid)return;
+ var ids=[];
+ try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);
+  if(k&&k.indexOf("gl-seed:")===0)ids.push(k)}}catch(e){}
+ ids.forEach(function(k){var p=k.split(":");if(p.length!==4)return;
+  be.keyPut(p[1]+"-"+p[2]+"-"+p[3],lsGet(k)).catch(function(){})})}
 function two(b){var o=[];for(var i=0;i<b.length&&o.length<2;i++)if(b[i]<252)o.push(b[i]%6+1);return o}
 async function diceFor(hEl,gEl,r){
  var b=await sha(cat(unhex(hEl),unhex(gEl),enc("roll:"+r))),d=two(b);
@@ -1164,14 +1195,15 @@ function start(){
  if(!cfg&&!MOCK)return Promise.reject(new Error("noconfig"));
  booting=(MOCK?Promise.resolve():loadScripts())
   .then(function(){be=window.GammonBackendFactory(cfg);return be.start()})
-  .then(function(u){uid=u;return u});
+  .then(function(a){setAcct(a);return uid});
  booting.catch(function(){booting=null});
  return booting}
 
 /* ---------- opening, creating, joining ---------- */
 async function create(target,listed){
- var nm=myName();if(!nm)throw new Error("name");
  await start();
+ if(!member())throw new Error("account");
+ var nm=myName();if(!nm)throw new Error("name");
  for(var tries=0;tries<5;tries++){
   var c=newCode(),ch=await chainFor(c,1,"h",true),now=Date.now();
   var data={v:1,code:c,created:now,updated:now,target:target,
@@ -1181,8 +1213,9 @@ async function create(target,listed){
   try{await be.create(c,data);return c}catch(e){if(String(e&&e.message).indexOf("taken")<0)throw e}}
  throw new Error("create")}
 async function join(c){
- var nm=myName();if(!nm)throw new Error("name");
  await start();
+ if(!member())throw new Error("account");
+ var nm=myName();if(!nm)throw new Error("name");
  var ch=await chainFor(c,1,"g",true);
  return be.update(c,async function(d){
   if(!d)throw new Error("missing");
@@ -1200,15 +1233,25 @@ async function join(c){
 function open(c){
  stopOpenPoll();
  return start().then(function(){
+  if(!uid){pending={kind:"g",code:c};showTab("online");return}
   detach(true);
   code=c;applied=0;curNo=0;doc=null;startedRoll=-1;settleKey="";warn("");
   lsSet("gl-last",c);
   if(location.hash!=="#g="+c)history.replaceState(null,"","#g="+c);
   CTRL=api;
+  $("olresume").hidden=true;
   setNames("…",myName()||"player");
   G.busy=true;G.turn=A;draw();say("Connecting to game <b>"+c+"</b>.");
-  unsub=be.watch(c,onDoc,function(){warn("Lost the connection to this game. Reload the page to reconnect.")});
+  unsub=be.watch(c,onDoc,function(e){
+   if(isPrivate(e)){privateGame(c);return}
+   warn("Lost the connection to this game. Reload the page to reconnect.")});
   showTab("play")})}
+/* Two players are already seated and you aren't one of them. */
+function privateGame(c){
+ newMatch(1);
+ say("Game <b>"+esc(c||"")+"</b> is private — it's already between two players. "+
+  (member()?"If it's yours, check you're signed in with the same account you played it on.":"If it's yours, sign in on the Online tab."));
+ refreshResume()}
 
 function detach(quiet){
  if(unsub)unsub();unsub=null;
@@ -1219,16 +1262,17 @@ function detach(quiet){
  if(was)CTRL=null;
  warn("");
  $("olbar").hidden=true;$("chat").hidden=true;
- if(!quiet&&was){history.replaceState(null,"",location.pathname+location.search);setNames(DEFAULT_OPP,"player")}
+ if(!quiet&&was){history.replaceState(null,"",location.pathname+location.search);setNames(DEFAULT_OPP,"player");setTimeout(refreshResume,0)}
  document.title=BASE_TITLE;markTab()}
 
 /* ---------- snapshot handling ---------- */
 function onDoc(d){
  if(!d){say("There's no game with that code.");detach();return}
+ if(d.host.uid!==uid&&!(d.guest&&d.guest.uid===uid)&&d.guest){privateGame(d.code);return}
  doc=d;
  if(d.host.uid===uid)side="h";
  else if(d.guest&&d.guest.uid===uid)side="g";
- else{side="h";spect=true}
+ else{side="h";spect=true}   // an open seat you could take
  opp=other(side);
  bar();
  if(busyTx||animating)return;
@@ -1343,7 +1387,7 @@ function settle(){
  var key=[d.phase,c.turn,c.step,c.events.length,c.offer,d.next?JSON.stringify(Object.keys(d.next.chain||{})):"",d.rematch].join("|");
  var isNew=key!==settleKey;settleKey=key;
  if(d.phase==="between"||d.phase==="over"){if(isNew)afterEndBox();title();return}
- if(spect){G.busy=true;G.turn=A;if(isNew)say("Watching <b>"+esc(d.host.name)+"</b> v <b>"+esc(d.guest?d.guest.name:"…")+"</b>.");draw();return}
+ if(spect){G.busy=true;G.turn=A;draw();return}
  if(c.step==="cube"){
   G.busy=true;
   if(c.offer===opp){if(isNew)cubePrompt(c.cube*2)}
@@ -1372,7 +1416,8 @@ function settle(){
 function fail(e){
  busyTx=false;
  var m=String(e&&e.message||e);
- var why=m==="nokey"?"This game's dice key isn't in this browser, so you can't roll here. Open the game in the browser you started it in."
+ var why=m==="nokey"?"Your dice key for this game isn't in your account or this browser, so you can't roll here. If this game started before accounts were added, finish it in the browser you started it in."
+  :m==="keysave"?"Couldn't save your dice key to your account. Check your connection and try again."
   :m==="state"?"The game moved on — refreshed."
   :"That didn't go through ("+m+"). Check your connection; the board has been refreshed.";
  if(doc){settleKey="";rebuild()}
@@ -1491,7 +1536,7 @@ function bar(){
  var d=doc,on=false;
  if(!spect&&d.seen&&d.seen[opp])on=(Date.now()-d.seen[opp])<HEARTBEAT*2.2;
  var h;
- if(spect)h='<span class="dot"></span><span>Watching <b>'+esc(d.host.name)+'</b> v <b>'+esc(d.guest?d.guest.name:"…")+'</b></span>';
+ if(spect)h='<span class="dot"></span><span><b>'+esc(d.host.name)+'</b> is looking for an opponent</span>';
  else if(!d.guest)h='<span class="dot"></span><span>Waiting for a friend to join</span>';
  else h='<span class="dot'+(on?" on":"")+'"></span><span><b>'+esc(oppName())+'</b> '+(on?"online now":"away")+'</span>';
  h+='<span>·</span><span>match to '+d.target+'</span><span class="code">'+esc(d.code)+'</span>'+
@@ -1515,8 +1560,11 @@ function offerSeat(){
  say("<b>"+esc(doc.host.name)+"</b> is waiting for an opponent.");
  var box=$("matbox");box.hidden=false;
  box.innerHTML='<div class="row"><button class="btn go" id="olTake">Join this game</button></div>';
- $("olTake").onclick=function(){if(!myName()){showTab("online");lobbyMsg("olMsg2","Add your name first, then press Join.");$("olCode").value=doc.code;return}
-  join(doc.code).then(function(){return open(doc.code)}).catch(function(e){say("Couldn't join: "+esc(e.message))})}}
+ $("olTake").onclick=function(){var c=doc.code;
+  if(!member()){pending={kind:"join",code:c};showTab("online");return}
+  join(c).then(function(){return open(c)}).catch(function(e){
+   if(isPrivate(e)){privateGame(c);return}
+   say("Couldn't join: "+esc(errText(e)))})}}
 function cubePrompt(to){
  say("<b>"+esc(OPP)+"</b> doubles to <b>"+to+"</b>. Take or drop?");
  var box=$("matbox");box.hidden=false;
@@ -1724,8 +1772,14 @@ function lobby(){
  if(!cfg&&!MOCK){
   el.innerHTML='<h2>Play a friend</h2><div class="card" style="margin-top:12px"><p>Online play isn\'t switched on for this copy yet.</p>'+
    '<p class="cap">It needs a free Firebase project for the two browsers to talk through. The steps are in SETUP.md — about ten minutes, no card required. Everything else works without it.</p></div>';return}
+ if(!be||!booting){el.innerHTML='<h2>Play a friend</h2><p class="cap" style="margin-top:8px">Connecting.</p>';
+  start().then(function(){if(!$("pane-online").hidden)lobby()},function(e){el.innerHTML='<h2>Play a friend</h2><p class="cap" style="margin-top:8px">'+esc(errText(e))+'</p>'});return}
+ if(!member()){accountCard(el);return}
+ if(pending&&handlePending())return;
  var listedPref=lsGet("gl-listed")!=="0";
- var h='<h2>Play a friend</h2><p class="cap" style="margin-top:4px">Join an open game below, start your own, or join with a code. Games wait if either of you leaves — pick up any time.</p>'+
+ var h='<h2>Play a friend</h2>'+
+  '<p class="who">Signed in as <b>'+esc(acct.name||acct.email)+'</b><span>'+esc(acct.email)+'</span><button class="linkbtn" id="olOut">Sign out</button></p>'+
+  '<p class="cap" style="margin-top:4px">Join an open game below, start your own, or join with a code. Games wait if either of you leaves — pick up any time, on any device you sign in on.</p>'+
   '<div class="cards">'+
   '<div class="card"><label class="lbl" for="olName">Your name</label><input class="txt" id="olName" maxlength="24" autocomplete="nickname" placeholder="Sam" value="'+escA(myName())+'"></div>'+
   '<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span class="lbl">Open games</span><button class="linkbtn" id="olRefresh">Refresh</button></div>'+
@@ -1738,8 +1792,11 @@ function lobby(){
   '<div class="card"><span class="lbl">Your games</span><div class="mine" id="olMine"><p class="cap">Loading.</p></div></div>'+
   '</div>';
  el.innerHTML=h;
- $("olName").addEventListener("change",function(){lsSet("gl-name",this.value.trim().slice(0,24))});
- $("olName").addEventListener("input",function(){lsSet("gl-name",this.value.trim().slice(0,24))});
+ $("olName").addEventListener("input",function(){var v=this.value.trim().slice(0,24);lsSet("gl-name",v);if(acct&&v)acct.name=v});
+ $("olName").addEventListener("change",function(){var v=this.value.trim().slice(0,24);if(v&&be.setName)be.setName(v).catch(function(){})});
+ $("olOut").onclick=function(){
+  if(CTRL===api)newMatch(1);
+  be.signOut().then(function(){setAcct(null);chains={};lsSet("gl-online","0");$("olresume").hidden=true;lobby()})};
  $("olLen").addEventListener("click",function(e){var b=e.target.closest("[data-olen]");if(!b)return;
   selLen=+b.getAttribute("data-olen");this.querySelectorAll("[data-olen]").forEach(function(x){x.setAttribute("aria-pressed",String(+x.getAttribute("data-olen")===selLen))})});
  $("olCreate").onclick=function(){
@@ -1755,7 +1812,7 @@ function lobby(){
   b.disabled=true;b.textContent="Joining";
   join(c).then(function(){return open(c)}).catch(function(e2){
    b.disabled=false;b.textContent="Join";
-   if(String(e2.message)==="full"){b.textContent="Taken";b.disabled=true;setTimeout(loadOpen,800);return}
+   if(isPrivate(e2)){b.textContent="Taken";b.disabled=true;setTimeout(loadOpen,800);return}
    var row=b.closest(".og");if(row){var n=row.querySelector(".sub2");if(n)n.textContent=errText(e2)}})};
  $("olJoin").onclick=function(){
   var c=($("olCode").value||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
@@ -1763,7 +1820,6 @@ function lobby(){
   if(!myName()){lobbyMsg("olMsg2","Add your name first.");$("olName").focus();return}
   var b=this;b.disabled=true;lobbyMsg("olMsg2","Joining.");
   join(c).then(function(){return open(c)}).catch(function(e){b.disabled=false;
-   if(String(e.message)==="full"){lobbyMsg("olMsg2","That game already has two players — opening it to watch.");open(c);return}
    lobbyMsg("olMsg2",errText(e))})};
  loadMine();loadOpen();startOpenPoll()}
 var openPoll=null;
@@ -1785,23 +1841,110 @@ function loadOpen(){
     '<button class="btn go" data-join="'+escA(d.code)+'">Join</button>'+
     '<span class="sub2">started '+ago(d.created||now)+'</span></div>'}).join("")})
  .catch(function(e){var el=$("olOpen");if(el)el.innerHTML='<p class="cap">'+esc(errText(e))+'</p>'})}
-function errText(e){var m=String(e&&e.message||e);
- return m==="name"?"Add your name first.":m==="missing"?"There's no game with that code.":m==="tamper"?"That game's dice keys don't check out.":
+var AUTH_MSG={
+ "auth/email-already-in-use":"There's already an account with that email. Choose “I have an account” to sign in.",
+ "auth/credential-already-in-use":"There's already an account with that email. Choose “I have an account” to sign in.",
+ "auth/invalid-email":"That email address doesn't look right.",
+ "auth/missing-email":"Enter your email address.",
+ "auth/weak-password":"Use a password of at least 6 characters.",
+ "auth/missing-password":"Enter your password.",
+ "auth/wrong-password":"That email and password don't match.",
+ "auth/invalid-credential":"That email and password don't match.",
+ "auth/invalid-login-credentials":"That email and password don't match.",
+ "auth/user-not-found":"There's no account with that email. Choose “New account” to make one.",
+ "auth/too-many-requests":"Too many tries. Wait a few minutes, or reset your password.",
+ "auth/network-request-failed":"Couldn't reach the sign-in service. Check your connection.",
+ "auth/operation-not-allowed":"Email sign-in isn't switched on in Firebase yet: Authentication → Sign-in method → Email/Password → Enable.",
+ "auth/admin-restricted-operation":"Email sign-in isn't switched on in Firebase yet: Authentication → Sign-in method → Email/Password → Enable."};
+function errText(e){var m=codeOf(e);
+ if(AUTH_MSG[m])return AUTH_MSG[m];
+ if(isPrivate(e))return "That game is private — it already has two players.";
+ return m==="account"?"Sign in on the Online tab first.":m==="name"?"Add your name first.":m==="missing"?"There's no game with that code.":m==="tamper"?"That game's dice keys don't check out.":
+  m==="keysave"?"Couldn't save your dice key to your account. Check your connection.":
   m==="noconfig"?"Online play isn't set up on this copy.":m==="load"?"Couldn't load the online components. Check your connection.":"Something went wrong: "+m}
+
+/* ---------- account ---------- */
+function accountCard(el){
+ var nw=acctMode==="new",legacy=acct&&acct.anon;
+ var h='<h2>Play a friend</h2><div class="cards"><div class="card acct">'+
+  '<span class="lbl">Sign in to play online</span>'+
+  '<p class="cap">Your account keeps your games with you — in Safari, the home-screen app or on a laptop — so a match can run over several days. Your friend needs one too.</p>'+
+  (pending?'<p class="cap"><b>Sign in to '+(pending.kind==="join"?"join":"open")+' game '+esc(pending.code)+'.</b></p>':'')+
+  (legacy?'<p class="cap"><b>You have online games in this browser.</b> Choose New account to keep them.</p>':'')+
+  '<div class="row" id="olMode"><button class="btn" data-mode="new" aria-pressed="'+nw+'">New account</button><button class="btn" data-mode="in" aria-pressed="'+!nw+'">I have an account</button></div>'+
+  '<form id="olAForm" class="acct" novalidate>'+
+  (nw?'<label class="lbl" for="olAName">Your name</label><input class="txt" id="olAName" maxlength="24" autocomplete="nickname" placeholder="Sam" value="'+escA(lsGet("gl-name")||"")+'">':'')+
+  '<label class="lbl" for="olEmail">Email</label><input class="txt" id="olEmail" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="name@example.com">'+
+  '<label class="lbl" for="olPw">Password</label><input class="txt" id="olPw" type="password" autocomplete="'+(nw?"new-password":"current-password")+'" placeholder="'+(nw?"At least 6 characters":"")+'">'+
+  '<button class="btn go" type="submit" id="olAGo">'+(nw?"Create account":"Sign in")+'</button>'+
+  (nw?'':'<button type="button" class="linkbtn" id="olForgot" style="align-self:flex-start">Forgot password?</button>')+
+  '<p class="cap" id="olAMsg" aria-live="polite"></p></form></div></div>';
+ el.innerHTML=h;
+ $("olMode").onclick=function(e){var b=e.target.closest("[data-mode]");if(!b)return;
+  var em=$("olEmail").value;acctMode=b.getAttribute("data-mode");accountCard(el);$("olEmail").value=em};
+ if($("olForgot"))$("olForgot").onclick=function(){
+  var em=$("olEmail").value.trim();
+  if(!em){lobbyMsg("olAMsg","Enter your email above, then press Forgot password again.");$("olEmail").focus();return}
+  be.resetPassword(em).then(function(){lobbyMsg("olAMsg","If there's an account for "+em+", a reset link is on its way. Check spam too.")},
+   function(e){lobbyMsg("olAMsg",errText(e))})};
+ $("olAForm").onsubmit=function(ev){
+  ev.preventDefault();
+  var em=$("olEmail").value.trim(),pw=$("olPw").value,nm=nw?($("olAName").value||"").trim().slice(0,24):"";
+  if(nw&&!nm){lobbyMsg("olAMsg","Add your name — it's what your friend sees.");$("olAName").focus();return}
+  if(!em){lobbyMsg("olAMsg",AUTH_MSG["auth/missing-email"]);$("olEmail").focus();return}
+  if(!pw){lobbyMsg("olAMsg",AUTH_MSG["auth/missing-password"]);$("olPw").focus();return}
+  if(nw&&pw.length<6){lobbyMsg("olAMsg",AUTH_MSG["auth/weak-password"]);$("olPw").focus();return}
+  var b=$("olAGo");b.disabled=true;lobbyMsg("olAMsg",nw?"Creating your account.":"Signing in.");
+  var wasAnon=!!(acct&&acct.anon);
+  (nw?be.signUp(em,pw,nm):be.signIn(em,pw)).then(function(a){
+   setAcct(a);chains={};
+   if(wasAnon&&nw)uploadLocalKeys();
+   refreshResume();lobby()},
+  function(e){b.disabled=false;lobbyMsg("olAMsg",errText(e))})}}
+/* A link opened before signing in: carry it out once signed in. */
+function handlePending(){
+ var p=pending;pending=null;if(!p)return false;
+ if(p.kind==="g"){open(p.code);return true}
+ join(p.code).then(function(){return open(p.code)}).catch(function(e){
+  if(isPrivate(e)){showTab("play");privateGame(p.code);return}
+  lobby();lobbyMsg("olMsg2",errText(e))});
+ return true}
+/* Where a game stands, from this player's side. */
+function statusOf(d){
+ var sd=d.host.uid===uid?"h":"g",os=other(sd),on=d[os==="h"?"host":"guest"],st,go=false;
+ if(d.phase==="waiting")st="waiting for a friend";
+ else if(d.phase==="over")st=(d.score[sd]>=d.target?"you won ":"lost ")+d.score[sd]+"–"+d.score[os];
+ else if(d.phase==="between"){var nx=d.next&&d.next.chain||{};go=!nx[sd];st=go?"start game "+(d.gameNo+1):"waiting for "+((on&&on.name)||"them")}
+ else if(d.cur.step==="cube"&&d.cur.offer===os){st="answer the double";go=true}
+ else if(d.cur.step==="cube"){st="waiting on your double"}
+ else if(d.cur.turn===sd){st="your move";go=true}
+ else st="their move";
+ return{sd:sd,os:os,on:on,st:st,go:go}}
+/* "You have a game on" bar on the Play tab, so a match picks up where it
+   left off without hunting for it. */
+function refreshResume(){
+ var el=$("olresume");if(!el)return;
+ if(!be||!uid||CTRL===api){el.hidden=true;return}
+ be.mine(uid).then(function(list){
+  if(CTRL===api||!uid){el.hidden=true;return}
+  var act=list.filter(function(d){return d.phase==="play"||d.phase==="between"})
+   .map(function(d){return{d:d,s:statusOf(d)}})
+   .sort(function(a,b){return (b.s.go-a.s.go)||((b.d.updated||0)-(a.d.updated||0))});
+  if(!act.length){el.hidden=true;return}
+  var t=act[0];
+  el.innerHTML='<span>Game with <b>'+esc((t.s.on&&t.s.on.name)||"your friend")+'</b> · '+esc(t.s.st)+
+   (act.length>1?' <span class="cap">· '+(act.length-1)+' more on the Online tab</span>':'')+'</span>'+
+   '<button class="btn go" data-code="'+escA(t.d.code)+'">Resume</button>';
+  el.hidden=false;
+  el.onclick=function(e){var b=e.target.closest("[data-code]");if(b)open(b.getAttribute("data-code"))}})
+ .catch(function(){el.hidden=true})}
 function loadMine(){
  start().then(function(){return be.mine(uid)}).then(function(list){
   mineCache=list.sort(function(a,b){return (b.updated||0)-(a.updated||0)}).slice(0,20);
   var el=$("olMine");if(!el)return;
   if(!mineCache.length){el.innerHTML='<p class="cap">No games yet.</p>';return}
   el.innerHTML=mineCache.map(function(d){
-   var sd=d.host.uid===uid?"h":"g",os=other(sd),on=d[os==="h"?"host":"guest"];
-   var st,go=false;
-   if(d.phase==="waiting"){st="waiting for a friend"}
-   else if(d.phase==="over"){st=(d.score[sd]>=d.target?"you won ":"lost ")+d.score[sd]+"–"+d.score[os]}
-   else if(d.phase==="between"){st="game "+d.gameNo+" finished"}
-   else if(d.cur.step==="cube"&&d.cur.offer===os){st="answer the double";go=true}
-   else if(d.cur.turn===sd){st="your move";go=true}
-   else st="their move";
+   var S=statusOf(d),sd=S.sd,os=S.os,on=S.on,st=S.st,go=S.go;
    return '<button class="mrow" data-code="'+escA(d.code)+'"><span><b>'+(on?esc(on.name):"Open seat")+'</b> <span class="cap">· to '+d.target+'</span></span>'+
     '<span class="st'+(go?" go":"")+'">'+st+'</span><span class="sub2">'+d.score[sd]+'–'+d.score[os]+' · code '+esc(d.code)+'</span></button>'}).join("");
   el.onclick=function(e){var b=e.target.closest("[data-code]");if(b)open(b.getAttribute("data-code"))}})
@@ -1820,14 +1963,21 @@ function tab(which){
 function boot(){
  var t=$("tab-online");if(t)t.addEventListener("click",function(){if(ui.review)exitReview();showTab("online")});
  var m=location.hash.match(/^#(join|g)=([A-Za-z0-9]{6})$/);
- if(!m)return;
+ if(!cfg&&!MOCK){if(m)showTab("online");return}
+ if(!m){
+  // Someone who plays online: check for a game in progress and offer to resume it.
+  if(lsGet("gl-online")==="1")start().then(refreshResume).catch(function(){});
+  return}
  var c=m[2].toUpperCase();
- if(!cfg&&!MOCK){showTab("online");return}
- if(m[1]==="g"){open(c).catch(function(e){showTab("online");lobbyMsg("olMsg2",errText(e))});return}
- if(!myName()){showTab("online");$("olCode").value=c;lobbyMsg("olMsg2","Add your name, then press Join.");$("olName").focus();return}
- join(c).then(function(){return open(c)}).catch(function(e){
-  if(String(e.message)==="full"){open(c);return}
-  showTab("online");$("olCode").value=c;lobbyMsg("olMsg2",errText(e))})}
+ start().then(function(){
+  if(m[1]==="g"){
+   if(!uid){pending={kind:"g",code:c};showTab("online");return}
+   open(c).catch(function(e){showTab("online");lobbyMsg("olMsg2",errText(e))});return}
+  if(!member()){pending={kind:"join",code:c};showTab("online");return}
+  join(c).then(function(){return open(c)}).catch(function(e){
+   if(isPrivate(e)){privateGame(c);return}
+   showTab("online");if($("olCode"))$("olCode").value=c;lobbyMsg("olMsg2",errText(e))})})
+ .catch(function(e){showTab("online")})}
 setTimeout(boot,0);
 return{tab:tab,open:open,_state:function(){return{code:code,side:side,applied:applied,doc:doc,uid:uid,spect:spect}}}})();
 

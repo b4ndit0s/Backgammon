@@ -4,27 +4,39 @@ rules_version = '2';
 // Paste these into Firebase console → Firestore Database → Rules → Publish.
 //
 // What they enforce:
-//  - Only signed-in (anonymous) users can read or write anything.
-//  - A match can only be created by its host, with the guest seat empty.
-//  - The empty guest seat can be taken once, by the person taking it.
-//  - After that, only the two seated players can change the match, and
-//    neither can change who is sitting where.
-//  - Chat is readable and writable only by the two seated players, and each
-//    message is sent as yourself. A message is either text (up to 500
-//    characters) or one photo (stored inline, under ~880 KB). Messages can't
-//    be edited; only "vanish" messages can be deleted, by either player.
-// The dice themselves are protected in the page by the hash-chain check,
-// which these rules don't need to understand.
+//  - Creating or joining a game needs a real account (email and password),
+//    so a seat follows the player to any browser or device.
+//  - A game can be seen by any signed-in player only while its second seat
+//    is empty. Once two players have sat down, only those two can read it.
+//  - The open-games list only ever shows listed games with an empty seat.
+//  - The empty guest seat can be taken once, by the person taking it. After
+//    that, only the two players can change the game, and neither can change
+//    who is sitting where.
+//  - Each player's dice keys are stored under their own account, readable
+//    only by them, and can't be changed once saved.
+//  - Chat is readable and writable only by the two players, and each message
+//    is sent as yourself. A message is either text (up to 500 characters) or
+//    one photo (stored inline, under ~880 KB). Messages can't be edited; only
+//    "vanish" messages can be deleted, by either player.
+// The dice themselves are also checked in the page with a hash chain.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
+    function member() {
+      return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
 
     match /matches/{code} {
-      allow read: if signedIn();
+      function seatOpen() { return resource.data.guest == null; }
+      function isPlayer() { return request.auth.uid in resource.data.players; }
 
-      allow create: if signedIn()
+      allow get: if signedIn() && (seatOpen() || isPlayer());
+      allow list: if signedIn()
+        && ((seatOpen() && resource.data.listed == true) || isPlayer());
+
+      allow create: if member()
         && code.size() == 6
         && request.resource.data.code == code
         && request.resource.data.host.uid == request.auth.uid
@@ -36,12 +48,12 @@ service cloud.firestore {
         && request.resource.data.code == resource.data.code
         && (
           // a seated player updating the game; seats stay as they are
-          (request.auth.uid in resource.data.players
+          (isPlayer()
             && request.resource.data.guest == resource.data.guest
             && request.resource.data.players == resource.data.players)
           ||
-          // someone taking the empty guest seat for themselves
-          (resource.data.guest == null
+          // someone with an account taking the empty guest seat for themselves
+          (seatOpen() && member()
             && request.resource.data.guest.uid == request.auth.uid
             && request.resource.data.players == [resource.data.host.uid, request.auth.uid])
         );
@@ -52,7 +64,6 @@ service cloud.firestore {
         function seated() {
           return request.auth.uid in get(/databases/$(database)/documents/matches/$(code)).data.players;
         }
-        allow read: if signedIn() && seated();
         function textOK() {
           return request.resource.data.get('text', null) is string
             && request.resource.data.text.size() > 0
@@ -62,6 +73,7 @@ service cloud.firestore {
           return request.resource.data.get('img', null) is string
             && request.resource.data.img.size() <= 900000;
         }
+        allow read: if signedIn() && seated();
         allow create: if signedIn() && seated()
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.ts is number
@@ -71,6 +83,11 @@ service cloud.firestore {
           && resource.data.get('vanish', false) == true;
         allow update: if false;
       }
+    }
+
+    match /keys/{owner}/seeds/{id} {
+      allow read, create: if signedIn() && request.auth.uid == owner;
+      allow update, delete: if false;
     }
   }
 }
